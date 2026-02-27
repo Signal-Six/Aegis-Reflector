@@ -21,7 +21,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # ONNX Inference - using ort for ONNX Runtime
-ort = "2.0.0-rc.11"
+# ort = "2.0.0-rc.11"  # Disabled for initial build - requires native ONNX Runtime binaries
 
 # Windows Service
 windows-service = "0.8.0"
@@ -53,6 +53,9 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Async utilities
 futures = "0.3"
+
+# Logging
+tracing-appender = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

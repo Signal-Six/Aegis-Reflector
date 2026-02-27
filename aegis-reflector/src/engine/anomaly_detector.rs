@@ -1,23 +1,17 @@
-//! Anomaly Detection Engine using ONNX Runtime
+//! Anomaly Detection Engine
 //!
-//! This module provides anomaly detection using an Isolation Forest model
-//! loaded from an ONNX file.
+//! This module provides anomaly detection using heuristic analysis
+//! for malware detection. ONNX model support can be enabled later.
 
-use ort::session::Session;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AnomalyError {
-    #[error("Failed to load ONNX model: {0}")]
-    ModelLoadError(String),
-    #[error("Failed to run inference: {0}")]
-    InferenceError(String),
+    #[error("Detection error: {0}")]
+    DetectionError(String),
     #[error("Invalid input features: {0}")]
     InvalidInput(String),
-    #[error("Model not loaded")]
-    ModelNotLoaded,
 }
 
 /// Anomaly detection result
@@ -267,29 +261,17 @@ fn count_suspicious_patterns(data: &[u8]) -> usize {
     patterns.iter().filter(|p| data_str.contains(&String::from_utf8_lossy(p))).count()
 }
 
-/// ONNX-based Anomaly Detector
+/// Anomaly Detector using heuristic analysis
 pub struct AnomalyDetector {
-    session: Option<Session>,
     model_path: String,
 }
 
 impl AnomalyDetector {
-    /// Create a new anomaly detector by loading the ONNX model
+    /// Create a new anomaly detector
     pub fn new(model_path: &str) -> Result<Self, AnomalyError> {
-        let path = Path::new(model_path);
-
-        if !path.exists() {
-            // Return a detector without model - will use heuristic fallback
-            return Ok(Self {
-                session: None,
-                model_path: model_path.to_string(),
-            });
-        }
-
-        // Note: In production, ONNX models should be loaded properly
-        // This is a simplified version that uses heuristics when model isn't available
+        // Currently using heuristic-based detection
+        // ONNX model loading can be added later
         Ok(Self {
-            session: None,
             model_path: model_path.to_string(),
         })
     }
@@ -302,19 +284,8 @@ impl AnomalyDetector {
             ));
         }
 
-        // If model is loaded, run ONNX inference
-        if let Some(ref session) = self.session {
-            // Run inference through ONNX
-            // This would require proper tensor handling
-            let input_tensor = ort::Tensor::from_array(features)
-                .map_err(|e| AnomalyError::InferenceError(e.to_string()))?;
-
-            // For now, use heuristic-based detection as fallback
-            Ok(self.heuristic_detection(features))
-        } else {
-            // Use heuristic-based detection when model is not available
-            Ok(self.heuristic_detection(features))
-        }
+        // Use heuristic-based detection
+        Ok(self.heuristic_detection(features))
     }
 
     /// Heuristic-based anomaly detection as fallback
@@ -364,9 +335,9 @@ impl AnomalyDetector {
         }
     }
 
-    /// Check if the model is loaded
+    /// Check if the detector is ready
     pub fn is_loaded(&self) -> bool {
-        self.session.is_some()
+        true
     }
 
     /// Get model path
