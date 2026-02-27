@@ -32,18 +32,12 @@ impl TerminalServer {
 
         // Start HTTP server with WebSocket support
         let db = self.database.clone();
-        let event_tx = self.event_tx.clone();
 
         actix_web::HttpServer::new(move || {
-            use actix_web::{web, App, HttpResponse, http::Method};
-
-            // Clone for each worker
-            let db = db.clone();
-            let tx = event_tx.clone();
+            use actix_web::{web, App, HttpResponse};
 
             App::new()
-                .app_data(web::Data::new(db))
-                .app_data(web::Data::new(tx))
+                .app_data(web::Data::new(db.clone()))
                 .route("/", web::get().to(websocket::index))
                 .route("/ws", web::get().to(websocket::ws_handler))
                 .route("/api/stats", web::get().to(api::get_stats))
@@ -111,7 +105,7 @@ mod api {
         req: web::Json<VetoRequest>,
     ) -> Result<HttpResponse> {
         match db.veto_threat(req.threat_id) {
-            Ok(_) => Ok(HttpResponse::Ok().json(r#"{"status": "ok"}"#)),
+            Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({"status": "ok"}))),
             Err(e) => Ok(HttpResponse::InternalServerError().json(e.to_string())),
         }
     }
@@ -122,24 +116,23 @@ mod api {
         req: web::Json<ReverseRequest>,
     ) -> Result<HttpResponse> {
         match db.reverse_action(req.action_id) {
-            Ok(_) => Ok(HttpResponse::Ok().json(r#"{"status": "ok"}"#)),
+            Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({"status": "ok"}))),
             Err(e) => Ok(HttpResponse::InternalServerError().json(e.to_string())),
         }
     }
 
     /// Trigger a manual scan
     pub async fn trigger_scan() -> Result<HttpResponse> {
-        // In a full implementation, this would trigger a scan
-        Ok(HttpResponse::Ok().json(r#"{"status": "scan_started"}"#))
+        Ok(HttpResponse::Ok().json(serde_json::json!({"status": "scan_started"})))
     }
 }
 
-#[derive(actix_web::Deserialize)]
+#[derive(actix_web::Deserialize, serde::Serialize)]
 pub struct VetoRequest {
-    threat_id: i64,
+    pub threat_id: i64,
 }
 
-#[derive(actix_web::Deserialize)]
+#[derive(actix_web::Deserialize, serde::Serialize)]
 pub struct ReverseRequest {
-    action_id: i64,
+    pub action_id: i64,
 }

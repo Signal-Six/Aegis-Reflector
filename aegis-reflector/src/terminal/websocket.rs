@@ -1,10 +1,10 @@
 //! WebSocket Handler for Terminal
 
 use actix_web::{web, HttpRequest, HttpResponse, Result};
-use actix_ws::{Message, Session, WebSocketContext};
+use actix_ws::{Message, Session};
 use crate::database::Database;
 use futures::StreamExt;
-use tokio::sync::broadcast;
+use std::sync::Arc;
 
 /// WebSocket index page
 pub async fn index() -> Result<HttpResponse> {
@@ -16,59 +16,49 @@ pub async fn index() -> Result<HttpResponse> {
 /// WebSocket handler
 pub async fn ws_handler(
     req: HttpRequest,
-    stream: web::Payload,
-    db: web::Data<Database>,
-    event_tx: web::Data<broadcast::Sender<crate::terminal::TerminalEvent>>,
-) -> Result<HttpResponse, actix_ws::Error> {
-    let (response, session, stream) = actix_ws::handle(&req, stream)?;
+    body: web::Payload,
+    db: web::Data<Arc<Database>>,
+) -> Result<HttpResponse> {
+    let (response, session, msg_stream) = actix_ws::handle(&req, body)?;
 
-    let mut ctx = WebSocketContext::new(session, stream);
     let db = db.get_ref().clone();
-    let tx = event_tx.get_ref().clone();
 
     // Spawn async task to handle WebSocket
     tokio::spawn(async move {
-        handle_websocket(&mut ctx, &db, &tx).await;
+        let mut session = session;
+        let mut msg_stream = msg_stream;
+
+        // Send welcome message
+        let welcome = r#"{
+            "type": "welcome",
+            "message": "Aegis-Reflector Terminal v0.1.0",
+            "commands": ["help", "stats", "threats", "actions", "cves", "scan", "veto", "reverse"]
+        }"#;
+        let _ = session.text(welcome).await;
+
+        // Handle messages
+        while let Some(msg) = msg_stream.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    let response = process_command(&text, &db).await;
+                    let _ = session.text(&response).await;
+                }
+                Ok(Message::Close(_)) => {
+                    break;
+                }
+                Err(_) => {
+                    break;
+                }
+                _ => {}
+            }
+        }
     });
 
     Ok(response)
 }
 
-async fn handle_websocket(
-    ctx: &mut WebSocketContext<()>,
-    db: &Database,
-    _tx: &broadcast::Sender<crate::terminal::TerminalEvent>,
-) {
-    // Send welcome message
-    let welcome = r#"{
-        "type": "welcome",
-        "message": "Aegis-Reflector Terminal v0.1.0",
-        "commands": ["help", "stats", "threats", "actions", "cves", "scan", "veto", "reverse"]
-    }"#;
-    ctx.text(welcome).await.ok();
-
-    // Handle messages
-    let mut msg_stream = ctx.messages();
-
-    while let Some(msg) = msg_stream.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                let response = process_command(&text, db).await;
-                ctx.text(&response).await.ok();
-            }
-            Ok(Message::Close(_)) => {
-                break;
-            }
-            Err(_) => {
-                break;
-            }
-            _ => {}
-        }
-    }
-}
-
 /// Process terminal commands
-async fn process_command(command: &str, db: &Database) -> String {
+async fn process_command(command: &str, db: &Arc<Database>) -> String {
     let parts: Vec<&str> = command.trim().split_whitespace().collect();
     let cmd = parts.first().map(|s| s.to_lowercase()).unwrap_or_default();
 

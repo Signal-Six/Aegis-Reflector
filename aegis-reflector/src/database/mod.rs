@@ -6,6 +6,7 @@ use rusqlite::{Connection, params, Result as SqlResult};
 use std::path::Path;
 use std::sync::Mutex;
 use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
 #[derive(Error, Debug)]
 pub enum DatabaseError {
@@ -18,7 +19,7 @@ pub enum DatabaseError {
 }
 
 /// CVE vulnerability record
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CveRecord {
     pub id: i64,
     pub cve_id: String,
@@ -31,7 +32,7 @@ pub struct CveRecord {
 }
 
 /// Detected threat record
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThreatRecord {
     pub id: i64,
     pub file_path: String,
@@ -43,7 +44,7 @@ pub struct ThreatRecord {
 }
 
 /// Action log entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionLog {
     pub id: i64,
     pub target: String,
@@ -336,7 +337,7 @@ impl Database {
 }
 
 /// Database statistics
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseStats {
     pub cve_count: i64,
     pub high_threat_count: i64,

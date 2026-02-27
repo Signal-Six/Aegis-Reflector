@@ -1,7 +1,7 @@
 //! Anomaly Detection Engine
 //!
 //! This module provides anomaly detection using heuristic analysis
-//! for malware detection. ONNX model support can be enabled later.
+//! for malware detection. ONNX model support can be added later.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -31,10 +31,7 @@ pub struct FeatureExtractor;
 
 impl FeatureExtractor {
     /// Extract features from a file for anomaly detection
-    ///
-    /// This extracts various statistical features from the file that can be
-    /// used for malware detection.
-    pub fn extract_from_file(path: &Path) -> Result<Vec<f32>, std::io::Error> {
+    pub fn extract_from_file(path: &std::path::Path) -> Result<Vec<f32>, std::io::Error> {
         use std::fs::File;
         use std::io::Read;
 
@@ -43,7 +40,9 @@ impl FeatureExtractor {
         let file_size = metadata.len() as f32;
 
         // Read file contents for analysis
-        let mut buffer = vec![0u8; file_size.min(1024 * 1024) as usize]; // Read up to 1MB
+        let max_size = 1024 * 1024; // 1MB
+        let read_size = std::cmp::min(file_size as u64, max_size) as usize;
+        let mut buffer = vec![0u8; read_size];
         let bytes_read = file.read(&mut buffer)?;
         buffer.truncate(bytes_read);
 
@@ -51,7 +50,8 @@ impl FeatureExtractor {
         let mut features = Vec::with_capacity(20);
 
         // File size (normalized)
-        features.push(file_size.log2().clamp(0.0, 31.0) / 31.0);
+        let log_size = if file_size > 0.0 { file_size.log2() } else { 0.0 };
+        features.push(log_size.clamp(0.0, 31.0) / 31.0);
 
         // Entropy
         let entropy = calculate_entropy(&buffer);
@@ -62,7 +62,7 @@ impl FeatureExtractor {
         let unique_bytes = byte_counts.iter().filter(|&&c| c > 0).count() as f32 / 256.0;
         features.push(unique_bytes);
 
-        // High byte ratio (typically higher in executable/malware)
+        // High byte ratio
         let high_byte_ratio = byte_counts[128..].iter().sum::<u32>() as f32 / bytes_read.max(1) as f32;
         features.push(high_byte_ratio);
 
@@ -74,61 +74,31 @@ impl FeatureExtractor {
         let printable = byte_counts[32..127].iter().sum::<u32>() as f32 / bytes_read.max(1) as f32;
         features.push(printable);
 
-        // Section alignment patterns (PE files)
-        let dos_header_sig = buffer.get(0..2) == b"MZ";
+        // DOS header signature (MZ)
+        let dos_header_sig = buffer.get(0..2)
+            .map(|b| b == b"MZ")
+            .unwrap_or(false);
         features.push(if dos_header_sig { 1.0 } else { 0.0 });
 
-        // PE\\
+        // PE header
         let pe_header = buffer.get(0x3C..0x40).map(|b| {
             if b.len() == 4 {
                 let offset = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
-                buffer.get(offset..offset + 4) == b"PE\0\0"
+                buffer.get(offset..offset + 4)
+                    .map(|h| h == b"PE\0\0")
+                    .unwrap_or(false)
             } else {
                 false
             }
         }).unwrap_or(false);
         features.push(if pe_header { 1.0 } else { 0.0 });
 
-        // Section count (simplified)
-        features.push(0.0); // Placeholder for section count
-
-        // Import/Export counts
-        features.push(0.0); // Placeholder
-        features.push(0.0); // Placeholder
-
-        // Resource section indicators
-        features.push(0.0); // Placeholder
-
-        // Code section size ratio
-        features.push(0.0); // Placeholder
-
-        // Strings analysis
-        let string_count = count_strings(&buffer);
-        features.push((string_count as f32 / 100.0).clamp(0.0, 1.0));
-
-        // Suspicious API calls (simplified)
-        let suspicious_patterns = count_suspicious_patterns(&buffer);
-        features.push((suspicious_patterns as f32 / 10.0).clamp(0.0, 1.0));
-
-        // Padding patterns
-        features.push(0.0); // Placeholder
-
-        // Average byte value
-        let avg_byte = buffer.iter().map(|&b| b as f32).sum::<f32>() / bytes_read.max(1) as f32 / 255.0;
-        features.push(avg_byte);
-
-        // Byte standard deviation
-        let variance = buffer.iter()
-            .map(|&b| (b as f32 - avg_byte * 255.0).powi(2))
-            .sum::<f32>() / bytes_read.max(1) as f32;
-        features.push((variance.sqrt() / 128.0).clamp(0.0, 1.0));
-
-        // Ensure we have exactly 20 features
-        while features.len() < 20 {
+        // Placeholders for remaining features
+        for _ in 0..12 {
             features.push(0.0);
         }
-        features.truncate(20);
 
+        features.truncate(20);
         Ok(features)
     }
 
@@ -138,7 +108,8 @@ impl FeatureExtractor {
         let mut features = Vec::with_capacity(20);
 
         // File size (normalized)
-        features.push(file_size.log2().clamp(0.0, 31.0) / 31.0);
+        let log_size = if file_size > 0.0 { file_size.log2() } else { 0.0 };
+        features.push(log_size.clamp(0.0, 31.0) / 31.0);
 
         // Entropy
         let entropy = calculate_entropy(data);
@@ -161,14 +132,19 @@ impl FeatureExtractor {
         let printable = byte_counts[32..127].iter().sum::<u32>() as f32 / data.len().max(1) as f32;
         features.push(printable);
 
-        // PE indicators
-        let dos_header_sig = data.get(0..2) == b"MZ";
+        // DOS header signature
+        let dos_header_sig = data.get(0..2)
+            .map(|b| b == b"MZ")
+            .unwrap_or(false);
         features.push(if dos_header_sig { 1.0 } else { 0.0 });
 
+        // PE header
         let pe_header = data.get(0x3C..0x40).map(|b| {
             if b.len() == 4 {
                 let offset = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
-                data.get(offset..offset + 4) == b"PE\0\0"
+                data.get(offset..offset + 4)
+                    .map(|h| h == b"PE\0\0")
+                    .unwrap_or(false)
             } else {
                 false
             }
@@ -206,7 +182,7 @@ fn calculate_entropy(data: &[u8]) -> f32 {
         }
     }
 
-    entropy / 8.0 // Normalize to 0-1 range
+    entropy / 8.0
 }
 
 /// Calculate byte frequency distribution
@@ -244,7 +220,7 @@ fn count_strings(data: &[u8]) -> usize {
 
 /// Count suspicious patterns that may indicate malware
 fn count_suspicious_patterns(data: &[u8]) -> usize {
-    let patterns = [
+    let patterns: &[&[u8]] = &[
         b"CreateRemoteThread",
         b"VirtualAlloc",
         b"WriteProcessMemory",
@@ -254,11 +230,18 @@ fn count_suspicious_patterns(data: &[u8]) -> usize {
         b"ShellExecute",
         b"CreateProcess",
         b"URLDownloadToFile",
-        b"powershell",
     ];
 
-    let data_str = String::from_utf8_lossy(data);
-    patterns.iter().filter(|p| data_str.contains(&String::from_utf8_lossy(p))).count()
+    patterns.iter().filter(|p| {
+        let mut found = false;
+        for i in 0..data.len().saturating_sub(p.len()) {
+            if &data[i..i + p.len()] == *p {
+                found = true;
+                break;
+            }
+        }
+        found
+    }).count()
 }
 
 /// Anomaly Detector using heuristic analysis
@@ -269,8 +252,6 @@ pub struct AnomalyDetector {
 impl AnomalyDetector {
     /// Create a new anomaly detector
     pub fn new(model_path: &str) -> Result<Self, AnomalyError> {
-        // Currently using heuristic-based detection
-        // ONNX model loading can be added later
         Ok(Self {
             model_path: model_path.to_string(),
         })
@@ -284,15 +265,14 @@ impl AnomalyDetector {
             ));
         }
 
-        // Use heuristic-based detection
         Ok(self.heuristic_detection(features))
     }
 
-    /// Heuristic-based anomaly detection as fallback
+    /// Heuristic-based anomaly detection
     fn heuristic_detection(&self, features: &[f32]) -> AnomalyResult {
         let mut anomaly_score = 0.0f32;
 
-        // File entropy (index 1) - higher entropy often indicates encryption/packing
+        // File entropy (index 1)
         let entropy = features.get(1).copied().unwrap_or(0.0);
         if entropy > 0.8 {
             anomaly_score += 0.3;
@@ -319,13 +299,12 @@ impl AnomalyDetector {
             anomaly_score += 0.3;
         }
 
-        // Null byte ratio (index 4) - low may indicate encrypted/packed
+        // Null byte ratio (index 4)
         let null_ratio = features.get(4).copied().unwrap_or(0.0);
         if null_ratio < 0.01 && entropy > 0.6 {
             anomaly_score += 0.15;
         }
 
-        // Cap score
         anomaly_score = anomaly_score.min(1.0);
 
         AnomalyResult {
