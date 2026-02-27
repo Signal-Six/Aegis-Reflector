@@ -20,9 +20,6 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# ONNX Inference - using ort for ONNX Runtime
-# ort = "2.0.0-rc.11"  # Disabled for initial build - requires native ONNX Runtime binaries
-
 # Windows Service
 windows-service = "0.8.0"
 
@@ -61,10 +58,7 @@ tracing-appender = "0.2"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
-    "Win32_Security",
-    "Win32_System_ProcessStatus",
-    "Win32_Filesystem"
-]}
+] }
 
 [profile.release]
 opt-level = 3
