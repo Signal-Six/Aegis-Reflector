@@ -1,0 +1,69 @@
+[package]
+name = "aegis-reflector"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aegis-Reflector Team"]
+description = "AI-Driven Antivirus Suite"
+license = "MIT"
+
+[lib]
+name = "aegis_reflector"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aegis-reflector"
+path = "src/main.rs"
+
+[dependencies]
+# Core
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ONNX Inference - using ort for ONNX Runtime
+ort = "2.0.0-rc.11"
+
+# Windows Service
+windows-service = "0.8.0"
+
+# HTTP Server + WebSocket
+actix-web = "4"
+actix-ws = "0.3"
+actix-files = "0.6"
+
+# Database
+rusqlite = { version = "0.35", features = ["bundled"] }
+
+# File System Monitoring
+notify = "8"
+
+# Security
+sha2 = "0.10"
+blake3 = "1"
+
+# Async HTTP
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async utilities
+futures = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_System_ProcessStatus",
+    "Win32_Filesystem"
+]}
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
